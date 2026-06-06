@@ -22,22 +22,31 @@ import requests
 DB_FILE = "stock_data.db"
 
 def init_db():
-    """Initialize SQLite database with required tables."""
+    """Initialize SQLite database with required tables and handle migrations."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
     # Enable foreign keys
     cursor.execute("PRAGMA foreign_keys = ON;")
     
-    # Table for S&P 500 stock metadata
+    # Table for stock metadata
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS stocks (
         symbol TEXT PRIMARY KEY,
         name TEXT,
         sector TEXT,
-        industry TEXT
+        industry TEXT,
+        market_index TEXT DEFAULT 'sp500'
     );
     """)
+    
+    # Migration: Add market_index column if it does not exist
+    cursor.execute("PRAGMA table_info(stocks);")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "market_index" not in columns:
+        print("Migrating stocks table: adding 'market_index' column...")
+        cursor.execute("ALTER TABLE stocks ADD COLUMN market_index TEXT DEFAULT 'sp500';")
+        conn.commit()
     
     # Table for daily stock metrics (cached)
     cursor.execute("""
@@ -67,50 +76,94 @@ def init_db():
     conn.commit()
     return conn
 
-def fetch_sp500_tickers(conn):
-    """Fetch S&P 500 tickers from Wikipedia and cache in DB."""
-    print("Fetching S&P 500 tickers from Wikipedia...")
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+def fetch_tickers_for_index(index_name, conn):
+    """Fetch tickers from Wikipedia for the specified index and cache in DB."""
+    print(f"Fetching {index_name.upper()} tickers from Wikipedia...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
+    
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        tables = pd.read_html(io.StringIO(r.text))
-        df = tables[0]
-        
-        # Rename columns to match database
-        df = df.rename(columns={
-            "Symbol": "symbol",
-            "Security": "name",
-            "GICS Sector": "sector",
-            "GICS Sub-Industry": "industry"
-        })
-        
-        # Clean symbols (yfinance uses - instead of . for classes, e.g. BRK.B -> BRK-B)
-        df["symbol"] = df["symbol"].str.replace(".", "-", regex=False)
-        
+        if index_name == "sp500":
+            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+            r = requests.get(url, headers=headers, timeout=10)
+            tables = pd.read_html(io.StringIO(r.text))
+            df = tables[0]
+            df = df.rename(columns={
+                "Symbol": "symbol",
+                "Security": "name",
+                "GICS Sector": "sector",
+                "GICS Sub-Industry": "industry"
+            })
+            df["symbol"] = df["symbol"].str.replace(".", "-", regex=False)
+            
+        elif index_name == "nasdaq100":
+            url = "https://en.wikipedia.org/wiki/Nasdaq-100"
+            r = requests.get(url, headers=headers, timeout=10)
+            tables = pd.read_html(io.StringIO(r.text))
+            df = tables[5]
+            df = df.rename(columns={
+                "Ticker": "symbol",
+                "Company": "name",
+            })
+            sector_col = [c for c in df.columns if "industry" in c.lower()]
+            subsector_col = [c for c in df.columns if "subsector" in c.lower()]
+            df["sector"] = df[sector_col[0]] if sector_col else "Technology"
+            df["industry"] = df[subsector_col[0]] if subsector_col else "Technology"
+            df["symbol"] = df["symbol"].str.replace(".", "-", regex=False)
+            
+        elif index_name == "smi":
+            url = "https://en.wikipedia.org/wiki/Swiss_Market_Index"
+            r = requests.get(url, headers=headers, timeout=10)
+            tables = pd.read_html(io.StringIO(r.text))
+            df = tables[2]
+            df = df.rename(columns={
+                "Ticker": "symbol",
+                "Name": "name",
+                "Industry": "sector"
+            })
+            df["industry"] = df["sector"]
+            df["symbol"] = df["symbol"].str.strip()
+            
+        elif index_name == "eurostoxx50":
+            url = "https://en.wikipedia.org/wiki/EURO_STOXX_50"
+            r = requests.get(url, headers=headers, timeout=10)
+            tables = pd.read_html(io.StringIO(r.text))
+            df = tables[3]
+            df = df.rename(columns={
+                "Ticker": "symbol",
+                "Name": "name",
+                "Sector": "sector"
+            })
+            df["industry"] = df["sector"]
+            df["symbol"] = df["symbol"].str.strip()
+            
+        else:
+            raise ValueError(f"Unknown index: {index_name}")
+            
         # Insert/Update stocks table
         cursor = conn.cursor()
         for _, row in df.iterrows():
             cursor.execute("""
-            INSERT OR REPLACE INTO stocks (symbol, name, sector, industry)
-            VALUES (?, ?, ?, ?)
-            """, (row["symbol"], row["name"], row["sector"], row["industry"]))
+            INSERT OR REPLACE INTO stocks (symbol, name, sector, industry, market_index)
+            VALUES (?, ?, ?, ?, ?)
+            """, (row["symbol"], row["name"], row["sector"], row["industry"], index_name))
         conn.commit()
         
-        print(f"Successfully cached {len(df)} tickers in database.")
+        print(f"Successfully cached {len(df)} tickers for index '{index_name}' in database.")
         return df["symbol"].tolist()
+        
     except Exception as e:
-        print(f"Error fetching tickers from Wikipedia: {e}")
-        # Fallback to already cached tickers if any
+        print(f"Error fetching {index_name} tickers: {e}")
+        # Fallback to already cached tickers
         cursor = conn.cursor()
-        cursor.execute("SELECT symbol FROM stocks")
+        cursor.execute("SELECT symbol FROM stocks WHERE market_index = ?", (index_name,))
         tickers = [row[0] for row in cursor.fetchall()]
         if tickers:
-            print(f"Using {len(tickers)} cached tickers from database.")
+            print(f"Using {len(tickers)} cached '{index_name}' tickers from database.")
             return tickers
         raise e
+
 
 
 def fetch_fed_data(conn):
@@ -298,34 +351,40 @@ def fetch_all_stocks_data(tickers, conn, force_refresh=False):
                 
     print(f"Batch completed: {count} fetched, {failures} failed/skipped.")
 
-def run_classification(conn, output_csv="screener_results.csv"):
-    """Classify current stock database into quadrants using relative medians."""
+def run_classification(conn, active_tickers, output_csv="screener_results.csv"):
+    """Classify current stock database into quadrants using relative medians of active tickers."""
     today_str = datetime.today().strftime("%Y-%m-%d")
     
-    # Query stock metadata and latest metrics
-    query = """
+    if not active_tickers:
+        print("No active tickers provided for classification.")
+        return None
+        
+    # Query stock metadata and latest metrics for active tickers only
+    placeholders = ",".join(["?"] * len(active_tickers))
+    query = f"""
     SELECT s.symbol, s.name, s.sector, s.industry, 
            m.revenue_growth, m.earnings_growth, m.forward_pe, m.debt_to_ebitda, m.market_cap
     FROM stocks s
     JOIN stock_metrics m ON s.symbol = m.symbol
     WHERE m.date = (SELECT MAX(date) FROM stock_metrics)
+      AND s.symbol IN ({placeholders})
     """
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(query, conn, params=active_tickers)
     
     if df.empty:
-        print("No stock metrics found in the database. Please fetch data first.")
+        print("No stock metrics found in the database for the active tickers. Please fetch data first.")
         return None
         
     # Calculate market medians for categorization (for non-null and positive values where appropriate)
     # Forward P/E must be positive for standard multiple comparison
     pe_filter = df["forward_pe"] > 0
-    med_pe = df.loc[pe_filter, "forward_pe"].median()
+    med_pe = df.loc[pe_filter, "forward_pe"].median() if not df[pe_filter].empty else 15.0
     
     # Debt to EBITDA
     debt_filter = df["debt_to_ebitda"].notna()
-    med_debt = df.loc[debt_filter, "debt_to_ebitda"].median()
+    med_debt = df.loc[debt_filter, "debt_to_ebitda"].median() if not df[debt_filter].empty else 2.0
     
-    print(f"Classification relative thresholds:")
+    print(f"Classification relative thresholds for active dataset ({len(df)} stocks):")
     print(f"  - Median Forward P/E: {med_pe:.2f}")
     print(f"  - Median Debt/EBITDA: {med_debt:.2f}")
     
@@ -361,7 +420,7 @@ def run_classification(conn, output_csv="screener_results.csv"):
     
     return df
 
-def generate_report(conn, df_stocks, output_report="report.md"):
+def generate_report(conn, df_stocks, index_name="sp500", output_report="report.md"):
     """Generate a detailed Markdown report with macro regime and top stock candidates."""
     cursor = conn.cursor()
     
@@ -389,6 +448,16 @@ def generate_report(conn, df_stocks, output_report="report.md"):
     # Sector distribution across quadrants
     sector_quadrant = pd.crosstab(df_stocks["sector"], df_stocks["profile"])
     sector_table = sector_quadrant.to_markdown()
+    
+    # Map index code to display name
+    index_names_map = {
+        "sp500": "S&P 500",
+        "nasdaq100": "Nasdaq-100",
+        "smi": "Swiss Market Index (SMI)",
+        "eurostoxx50": "Euro Stoxx 50",
+        "custom": "Custom Ticker List"
+    }
+    index_display = index_names_map.get(index_name, index_name.upper())
     
     # Get top 5 stocks for each profile (sorted by optimal metric for the regime)
     profile_details = ""
@@ -431,7 +500,7 @@ def generate_report(conn, df_stocks, output_report="report.md"):
         profile_details += "|---|---|---|---|---|---|---|---|\n"
         profile_details += "\n".join(table_rows) + "\n\n"
         
-    report_content = f"""# S&P 500 Stock Screening & Macro Alignment Report
+    report_content = f"""# {index_display} Stock Screening & Macro Alignment Report
 
 **Date of Report:** {datetime.today().strftime("%Y-%m-%d")}
 **Database Last Updated:** {df_stocks['symbol'].count()} stocks screened
@@ -474,7 +543,7 @@ Based on the current macro regime (**{regime}**), the recommended strategic asse
     report_content += f"""
 ## 2. Relative Screening Thresholds
 
-The screener classifies stocks using **relative thresholds** based on the medians of all active S&P 500 stocks. This ensures classifications adjust dynamically to the market environment.
+The screener classifies stocks using **relative thresholds** based on the medians of all active stocks in this index dataset. This ensures classifications adjust dynamically to the market environment.
 
 * **Median Forward P/E:** {med_pe:.2f}
 * **Median Debt-to-EBITDA:** {med_debt:.2f}
@@ -487,7 +556,7 @@ This matrix displays the count of companies in each GICS Sector categorized into
 
 ## 4. Top Candidate Screen Results
 
-Below are the top candidate companies matching each profile, ranked by Market Capitalization.
+Below are the top candidate companies matching each profile.
 
 {profile_details}
 
@@ -501,7 +570,9 @@ Below are the top candidate companies matching each profile, ranked by Market Ca
     print(f"Report saved to {output_report}")
 
 def main():
-    parser = argparse.ArgumentParser(description="S&P 500 Macro Alignment Stock Screener")
+    parser = argparse.ArgumentParser(description="Macro Alignment Stock Screener")
+    parser.add_argument("--index", type=str, default="sp500", choices=["sp500", "nasdaq100", "smi", "eurostoxx50"], help="Wikipedia stock index to screen")
+    parser.add_argument("--tickers", type=str, default=None, help="Comma-separated custom tickers list (ignores --index)")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of stocks to fetch (for testing)")
     parser.add_argument("--refresh", action="store_true", help="Force refresh of stock metrics from Yahoo Finance")
     parser.add_argument("--refresh-fed", action="store_true", help="Force refresh of Fed economic data")
@@ -518,8 +589,23 @@ def main():
     else:
         print("Fed economic data already exists in database. Use --refresh-fed to update.")
         
-    # 2. Fetch S&P 500 Tickers
-    tickers = fetch_sp500_tickers(conn)
+    # 2. Get Tickers List
+    if args.tickers:
+        tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+        index_name = "custom"
+        # Register custom tickers in database if they don't exist
+        cursor = conn.cursor()
+        for t in tickers:
+            cursor.execute("""
+            INSERT OR IGNORE INTO stocks (symbol, name, sector, industry, market_index)
+            VALUES (?, ?, 'Custom', 'Custom', 'custom')
+            """, (t, f"Custom Stock {t}"))
+        conn.commit()
+        print(f"Using {len(tickers)} custom tickers.")
+    else:
+        index_name = args.index
+        tickers = fetch_tickers_for_index(index_name, conn)
+        
     if args.limit:
         tickers = tickers[:args.limit]
         print(f"Testing mode enabled. Limited run to first {len(tickers)} tickers.")
@@ -527,12 +613,16 @@ def main():
     # 3. Fetch Stock Data
     fetch_all_stocks_data(tickers, conn, force_refresh=args.refresh)
     
-    # 4. Classify Stocks
-    df_stocks = run_classification(conn)
+    # 4. Classify and Output
+    # Set filenames based on index
+    csv_file = "screener_results.csv" if index_name == "sp500" else f"screener_results_{index_name}.csv"
+    report_file = "report.md" if index_name == "sp500" else f"report_{index_name}.md"
+    
+    df_stocks = run_classification(conn, tickers, output_csv=csv_file)
     
     # 5. Generate Report
     if df_stocks is not None:
-        generate_report(conn, df_stocks)
+        generate_report(conn, df_stocks, index_name=index_name, output_report=report_file)
         
     conn.close()
     print("Done!")

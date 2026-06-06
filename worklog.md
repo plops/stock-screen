@@ -44,3 +44,23 @@
 - Copied performance charts (`regimes_history.png`, `backtest_performance.png`) to the artifacts directory and created [walkthrough.md](file:///home/kiel/.gemini/antigravity/brain/d5ed401c-5e7a-41e5-b2a8-b14d2aaa3e02/walkthrough.md).
 - Created a comprehensive [README.md](file:///home/kiel/stage/stock-screen/README.md) in the workspace.
 - Updated all checklists to completed.
+
+## [2026-06-06 13:58] Multi-Index and International Support Implementation
+
+- Identified `yfinance` symbol syntax for international markets: Swiss SMI tickers use the `.SW` suffix (e.g. `NESN.SW`), while Euro Stoxx 50 tickers use dot-separated country suffixes (e.g., `MC.PA`, `ASML.AS`).
+- Modified `stock_screen.py` to strip whitespace rather than replacing dots with hyphens for the `smi` and `eurostoxx50` indices, ensuring `yfinance` resolves international tickers successfully.
+- Cleaned the SQLite database from temporary invalid hyphenated international symbols.
+- Fixed indentation alignment (unexpected indent/syntax error) in `stock_screen.py` for `run_classification`, `generate_report`, and `main()`.
+- Enhanced `backtest.py` with `--index` and `--tickers` parameters:
+  - Fetches and caches historical prices only for target tickers.
+  - Automatically identifies missing prices per ticker and downloads only missing data, avoiding redundant full downloads.
+  - Dynamically calculates cohort relative medians specifically on the active ticker list.
+  - Saves reports and Matplotlib charts using index-specific suffix naming (e.g., `backtest_report_smi.md`, `regimes_history_smi.png`, `backtest_performance_smi.png`), while keeping default names for `sp500`.
+- Completed validation runs:
+  - Swiss SMI: `uv run stock_screen.py --index smi` followed by `uv run backtest.py --index smi`.
+  - Euro Stoxx 50: `uv run stock_screen.py --index eurostoxx50` followed by `uv run backtest.py --index eurostoxx50`.
+  - Nasdaq-100: `uv run stock_screen.py --index nasdaq100` followed by `uv run backtest.py --index nasdaq100`.
+  - All runs completed successfully and generated correct index-specific reports and graphics.
+- Updated `.gitignore` to ignore index-specific generated outputs (reports, CSV files, and PNG charts).
+- Documented new CLI parameters and outputs in `README.md`.
+

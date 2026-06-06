@@ -1,8 +1,6 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/plops/stock-screen)
+# Macro-Aligned Stock Screening & Backtesting Tool
 
-# S&P 500 Stock Screening & Macro Alignment Tool
-
-This project provides a quantitative stock screening and backtesting pipeline that aligns equity investments with Federal Reserve monetary policy. The framework segments market conditions into four quadrants based on two core indicators: interest rates and central bank liquidity (balance sheet size). It then screens and categorizes S&P 500 companies into four matching risk/growth profiles.
+This project provides a quantitative stock screening and backtesting pipeline that aligns equity investments with Federal Reserve monetary policy. The framework segments market conditions into four quadrants based on two core indicators: interest rates and central bank liquidity (balance sheet size). It then screens and categorizes S&P 500, Nasdaq-100, Swiss SMI, Euro Stoxx 50, or custom lists of companies into four matching risk/growth profiles.
 
 ## Installation & Requirements
 
@@ -13,11 +11,23 @@ If you don't have `uv` installed, get it here: https://github.com/astral-sh/uv
 ## How to Run
 
 ### 1. Run the Stock Screener
-This script downloads Wikipedia S&P 500 data, downloads the Fed balance sheet (`WALCL`) and interest rates (`FEDFUNDS`) from FRED, and fetches yfinance fundamentals (Forward P/E, Debt-to-EBITDA, Revenue & EPS Growth) to classify the companies. All data is cached in a local SQLite database (`stock_data.db`) to avoid repeated API requests and rate limits.
+This script downloads stock list data from Wikipedia (S&P 500, Nasdaq-100, Swiss SMI, or Euro Stoxx 50), downloads the Fed balance sheet (`WALCL`) and interest rates (`FEDFUNDS`) from FRED, and fetches yfinance fundamentals (Forward P/E, Debt-to-EBITDA, Revenue & EPS Growth) to classify the companies. All data is cached in a local SQLite database (`stock_data.db`) to avoid repeated API requests and rate limits.
 
 ```bash
-# Run the screener (cached mode, polite rate-limiting, skips today's already fetched data)
+# Run the screener for S&P 500 (default)
 uv run stock_screen.py
+
+# Run the screener for Swiss SMI
+uv run stock_screen.py --index smi
+
+# Run the screener for Euro Stoxx 50
+uv run stock_screen.py --index eurostoxx50
+
+# Run the screener for Nasdaq-100
+uv run stock_screen.py --index nasdaq100
+
+# Run the screener for a custom list of tickers (ignores --index)
+uv run stock_screen.py --tickers AAPL,MSFT,NESN.SW,ASML.AS
 
 # Force refresh stock metrics (overwrites cached data for all stocks)
 uv run stock_screen.py --refresh
@@ -25,8 +35,8 @@ uv run stock_screen.py --refresh
 # Force refresh FED macroeconomic data from FRED
 uv run stock_screen.py --refresh-fed
 
-# Run a quick test on the first 20 tickers
-uv run stock_screen.py --limit 20
+# Run a quick test on the first 20 tickers of SMI
+uv run stock_screen.py --index smi --limit 20
 ```
 
 #### Resuming Failed Runs & Handling Rate Limits
@@ -40,29 +50,38 @@ Because the SQLite database caches successful daily metrics, the script will aut
 
 **Outputs:**
 - `stock_data.db` (SQLite Database cache)
-- `screener_results.csv` (CSV of current S&P 500 company classifications)
-- `report.md` (A beautiful Markdown report of the current regime, thresholds, and top candidates)
+- `screener_results_{index}.csv` (CSV of current company classifications; defaults to `screener_results.csv` for S&P 500)
+- `report_{index}.md` (Markdown report of the current regime, thresholds, and top candidates; defaults to `report.md` for S&P 500)
 
 ---
 
 ### 2. Run the Backtester
-This script runs historical backtests to verify the video's investment theory. It downloads weekly closing prices for S&P 500 stocks since 2015 (cached in SQLite), maps historical FRED regimes, calculates forward-holding returns for the four stock cohorts, and generates comparative metrics.
+This script runs historical backtests to verify the macro-alignment investment theory. It downloads weekly closing prices for the target stocks since 2015 (cached in SQLite), maps historical FRED regimes, calculates forward-holding returns for the four stock cohorts, and generates comparative metrics.
 
 ```bash
-# Run backtest with default parameters (12-month holding period, since 2015)
+# Run backtest with default parameters (S&P 500, 12-month holding period, since 2015)
 uv run backtest.py
 
+# Run backtest for Swiss SMI
+uv run backtest.py --index smi
+
+# Run backtest for Euro Stoxx 50
+uv run backtest.py --index eurostoxx50
+
+# Run backtest for a custom list of tickers
+uv run backtest.py --tickers AAPL,MSFT,NESN.SW
+
 # Run backtest with a 24-month holding period since 2018
-uv run backtest.py --holding-months 24 --start-year 2018
+uv run backtest.py --index smi --holding-months 24 --start-year 2018
 
 # Force refresh historical stock price downloads
 uv run backtest.py --refresh-prices
 ```
 
 **Outputs:**
-- `backtest_report.md` (Detailed Markdown report of historical holding returns by regime)
-- `regimes_history.png` (Chart showing historical Fed Funds rate and balance sheet size, color-shaded by policy regime)
-- `backtest_performance.png` (Bar chart comparing stock cohort returns across different Fed regimes)
+- `backtest_report_{index}.md` (Detailed Markdown report of historical holding returns by regime; defaults to `backtest_report.md` for S&P 500)
+- `regimes_history_{index}.png` (Chart showing historical Fed Funds rate and balance sheet size, color-shaded by policy regime; defaults to `regimes_history.png` for S&P 500)
+- `backtest_performance_{index}.png` (Bar chart comparing stock cohort returns across different Fed regimes; defaults to `backtest_performance.png` for S&P 500)
 
 ---
 

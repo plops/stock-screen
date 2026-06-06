@@ -13,6 +13,9 @@ stock_data.db*
 
 # Generated screening and backtesting outputs
 screener_results.csv
+screener_results_*.csv
 report.md
+report_*.md
 backtest_report.md
+backtest_report_*.md
 *.png

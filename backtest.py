@@ -37,29 +37,42 @@ def fetch_and_cache_historical_prices(tickers, conn, start_date="2015-01-01", fo
     init_historical_prices_table(conn)
     cursor = conn.cursor()
     
-    # Check if we already have prices
-    cursor.execute("SELECT COUNT(*) FROM historical_prices")
-    price_count = cursor.fetchone()[0]
-    
-    if price_count > 0 and not force_refresh:
-        print("Historical prices already cached in database. Use --refresh-prices to download again.")
+    # Check which tickers are missing
+    if force_refresh:
+        tickers_to_download = tickers
+    else:
+        cursor.execute("SELECT DISTINCT symbol FROM historical_prices")
+        cached_tickers = set([row[0] for row in cursor.fetchall()])
+        tickers_to_download = [t for t in tickers if t not in cached_tickers]
+        
+    if not tickers_to_download:
+        print("All requested historical prices are already cached in database.")
         return
         
-    print(f"Downloading historical weekly prices for {len(tickers)} tickers since {start_date}...")
+    print(f"Downloading historical weekly prices for {len(tickers_to_download)} tickers since {start_date}...")
     
     # yfinance download in batch
     try:
         # Download weekly adjusted close prices
-        df_prices = yf.download(tickers, start=start_date, interval="1wk")["Close"]
+        df_prices = yf.download(tickers_to_download, start=start_date, interval="1wk")["Close"]
         
+        # Handle single ticker case
+        if isinstance(df_prices, pd.Series):
+            df_prices = df_prices.to_frame(name=tickers_to_download[0])
+            
+        if df_prices.empty:
+            print("Warning: Downloaded data is empty. No historical prices could be retrieved.")
+            return
+            
         # Melt dataframe to long format
         df_long = df_prices.reset_index().melt(id_vars=["Date"], var_name="symbol", value_name="close")
         df_long = df_long.dropna(subset=["close"])
         df_long["date"] = df_long["Date"].dt.strftime("%Y-%m-%d")
         
-        # Batch insert into SQLite
+        # Batch insert/update into SQLite
         print("Caching historical prices in database...")
-        cursor.execute("DELETE FROM historical_prices")  # Clear old prices
+        placeholders = ",".join(["?"] * len(tickers_to_download))
+        cursor.execute(f"DELETE FROM historical_prices WHERE symbol IN ({placeholders})", tickers_to_download)
         
         records = df_long[["symbol", "date", "close"]].to_records(index=False)
         cursor.executemany("""
@@ -73,15 +86,16 @@ def fetch_and_cache_historical_prices(tickers, conn, start_date="2015-01-01", fo
         import traceback
         traceback.print_exc()
 
-def load_historical_prices(conn):
-    """Load cached historical prices from database."""
-    query = "SELECT symbol, date, close FROM historical_prices"
-    df = pd.read_sql_query(query, conn, parse_dates=["date"])
+def load_historical_prices(conn, tickers):
+    """Load cached historical prices from database for specified tickers."""
+    placeholders = ",".join(["?"] * len(tickers))
+    query = f"SELECT symbol, date, close FROM historical_prices WHERE symbol IN ({placeholders})"
+    df = pd.read_sql_query(query, conn, params=tickers, parse_dates=["date"])
     # Pivot back to wide format
     df_pivot = df.pivot(index="date", columns="symbol", values="close")
     return df_pivot
 
-def run_backtest(conn, holding_period_months=12, start_year=2015):
+def run_backtest(conn, tickers, index_name="sp500", holding_period_months=12, start_year=2015):
     """Run forward holding return analysis grouped by historical macro regimes."""
     print(f"Running backtest with {holding_period_months}-month holding period since {start_year}...")
     
@@ -89,13 +103,16 @@ def run_backtest(conn, holding_period_months=12, start_year=2015):
     df_macro = pd.read_sql_query("SELECT date, walcl, fedfunds, regime FROM fed_macro", conn, parse_dates=["date"])
     df_macro = df_macro[df_macro["date"].dt.year >= start_year].sort_values("date")
     
-    # 2. Get today's classified stock profiles
-    df_stocks = pd.read_sql_query("""
+    # 2. Get today's classified stock profiles for active tickers only
+    placeholders = ",".join(["?"] * len(tickers))
+    query = f"""
     SELECT s.symbol, s.sector, m.revenue_growth, m.earnings_growth, m.forward_pe, m.debt_to_ebitda, m.market_cap
     FROM stocks s
     JOIN stock_metrics m ON s.symbol = m.symbol
     WHERE m.date = (SELECT MAX(date) FROM stock_metrics)
-    """, conn)
+      AND s.symbol IN ({placeholders})
+    """
+    df_stocks = pd.read_sql_query(query, conn, params=tickers)
     
     if df_stocks.empty:
         print("Error: No stock screening data found in DB. Run stock_screen.py first.")
@@ -103,11 +120,11 @@ def run_backtest(conn, holding_period_months=12, start_year=2015):
         
     # Recalculate medians for classification
     pe_filter = df_stocks["forward_pe"] > 0
-    med_pe = df_stocks.loc[pe_filter, "forward_pe"].median()
+    med_pe = df_stocks.loc[pe_filter, "forward_pe"].median() if not df_stocks[pe_filter].empty else 15.0
     debt_filter = df_stocks["debt_to_ebitda"].notna()
-    med_debt = df_stocks.loc[debt_filter, "debt_to_ebitda"].median()
+    med_debt = df_stocks.loc[debt_filter, "debt_to_ebitda"].median() if not df_stocks[debt_filter].empty else 2.0
     
-    # Classify current S&P 500 stocks
+    # Classify current stocks
     def classify(row):
         pe = row["forward_pe"]
         debt = row["debt_to_ebitda"]
@@ -130,7 +147,7 @@ def run_backtest(conn, holding_period_months=12, start_year=2015):
         print(f"Cohort {profile}: {len(cohorts[profile])} stocks.")
         
     # 3. Load historical prices
-    df_prices = load_historical_prices(conn)
+    df_prices = load_historical_prices(conn, tickers)
     if df_prices.empty:
         print("Error: No historical prices found. Download them first.")
         return
@@ -229,11 +246,24 @@ def run_backtest(conn, holding_period_months=12, start_year=2015):
     df_summary = pd.DataFrame(summary_data)
     print(df_summary.to_markdown(index=False))
     
+    index_names_map = {
+        "sp500": "S&P 500",
+        "nasdaq100": "Nasdaq-100",
+        "smi": "Swiss Market Index (SMI)",
+        "eurostoxx50": "Euro Stoxx 50",
+        "custom": "Custom Ticker List"
+    }
+    index_display = index_names_map.get(index_name, index_name.upper())
+    
+    report_file = "backtest_report.md" if index_name == "sp500" else f"backtest_report_{index_name}.md"
+    regimes_img = "regimes_history.png" if index_name == "sp500" else f"regimes_history_{index_name}.png"
+    perf_img = "backtest_performance.png" if index_name == "sp500" else f"backtest_performance_{index_name}.png"
+    
     # Save backtest report to text
-    with open("backtest_report.md", "w") as f:
-        f.write(f"""# Macro Alignment Backtesting Report
+    with open(report_file, "w") as f:
+        f.write(f"""# {index_display} Macro Alignment Backtesting Report
 
-This report evaluates the **Macro-Sensitive Stock Screening Framework** by analyzing the historical returns of the four current stock cohorts under different monetary policy regimes.
+This report evaluates the **Macro-Sensitive Stock Screening Framework** by analyzing the historical returns of the four current {index_display} stock cohorts under different monetary policy regimes.
 
 * **Analysis Period:** {start_year} to present
 * **Holding Period:** {holding_period_months} Months
@@ -243,7 +273,7 @@ This report evaluates the **Macro-Sensitive Stock Screening Framework** by analy
 ## Core Concepts & Methodology
 
 ### 1. What is a Cohort?
-A **cohort** is a group of companies that share similar financial characteristics. In this framework, the S&P 500 companies are classified into four distinct investment profiles (cohorts) based on their relative **Forward P/E (valuation)** and **Debt-to-EBITDA (leverage)**:
+A **cohort** is a group of companies that share similar financial characteristics. In this framework, the {index_display} companies are classified into four distinct investment profiles (cohorts) based on their relative **Forward P/E (valuation)** and **Debt-to-EBITDA (leverage)**:
 - **Q1 Cohort (Aggressive):** High valuation (above market median), Low leverage (below market median).
 - **Q2 Cohort (Moderate):** High valuation, High leverage.
 - **Q3 Cohort (Value):** Low valuation, High leverage.
@@ -274,14 +304,14 @@ According to the macro-alignment investment theory:
 3. **Q3 (Low Rate / QT) - Selective Phase:** Q3: Value stock profile (high growth, high debt) should perform best due to low interest rates aiding leverage.
 4. **Q4 (High Rate / QT) - Defensive Phase:** Q4: Defensive stock profile (stable, low debt, low valuation) should perform best (or experience the lowest drawdowns).
 
-*Refer to the generated charts `backtest_performance.png` and `regimes_history.png` for visual verification.*
+*Refer to the generated charts `{perf_img}` and `{regimes_img}` for visual verification.*
 """)
-    print("Backtest report saved to backtest_report.md")
+    print(f"Backtest report saved to {report_file}")
     
     # 6. Generate Plots
-    generate_charts(df_macro, df_results, regimes_list)
+    generate_charts(df_macro, df_results, regimes_list, index_name=index_name)
 
-def generate_charts(df_macro, df_results, regimes_list):
+def generate_charts(df_macro, df_results, regimes_list, index_name="sp500"):
     """Generate Matplotlib charts for Fed regimes and backtest returns."""
     print("Generating performance charts...")
     
@@ -327,7 +357,8 @@ def generate_charts(df_macro, df_results, regimes_list):
     ax1.legend(loc="upper left", framealpha=0.9, fontsize=9)
     plt.xlabel("Date")
     plt.tight_layout()
-    plt.savefig("regimes_history.png", dpi=150)
+    regimes_img = "regimes_history.png" if index_name == "sp500" else f"regimes_history_{index_name}.png"
+    plt.savefig(regimes_img, dpi=150)
     plt.close()
     
     # Chart 2: Average Return by Regime (Bar Chart)
@@ -376,26 +407,42 @@ def generate_charts(df_macro, df_results, regimes_list):
                     ha='center', va='bottom', fontsize=7)
                     
     plt.tight_layout()
-    plt.savefig("backtest_performance.png", dpi=150)
+    perf_img = "backtest_performance.png" if index_name == "sp500" else f"backtest_performance_{index_name}.png"
+    plt.savefig(perf_img, dpi=150)
     plt.close()
-    print("Charts successfully saved as regimes_history.png and backtest_performance.png")
+    print(f"Charts successfully saved as {regimes_img} and {perf_img}")
 
 def main():
     parser = argparse.ArgumentParser(description="Stock Screen Theory Backtester")
+    parser.add_argument("--index", type=str, default="sp500", choices=["sp500", "nasdaq100", "smi", "eurostoxx50"], help="Wikipedia stock index to backtest")
+    parser.add_argument("--tickers", type=str, default=None, help="Comma-separated custom tickers list (ignores --index)")
     parser.add_argument("--refresh-prices", action="store_true", help="Force download of historical prices")
     parser.add_argument("--start-year", type=int, default=2015, help="Start year for backtest (default: 2015)")
     parser.add_argument("--holding-months", type=int, default=12, help="Holding period in months (default: 12)")
     args = parser.parse_args()
     
     conn = sqlite3.connect(DB_FILE)
-    
-    # Check what tickers are available
     cursor = conn.cursor()
-    cursor.execute("SELECT symbol FROM stocks")
-    tickers = [row[0] for row in cursor.fetchall()]
     
+    # Get Tickers List
+    if args.tickers:
+        tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+        index_name = "custom"
+        # Register custom tickers in database if they don't exist
+        for t in tickers:
+            cursor.execute("""
+            INSERT OR IGNORE INTO stocks (symbol, name, sector, industry, market_index)
+            VALUES (?, ?, 'Custom', 'Custom', 'custom')
+            """, (t, f"Custom Stock {t}"))
+        conn.commit()
+        print(f"Using {len(tickers)} custom tickers.")
+    else:
+        index_name = args.index
+        cursor.execute("SELECT symbol FROM stocks WHERE market_index = ?", (index_name,))
+        tickers = [row[0] for row in cursor.fetchall()]
+        
     if not tickers:
-        print("Error: No tickers found in stocks table. Please run stock_screen.py first.")
+        print(f"Error: No tickers found for index '{index_name}' in stocks table. Please run stock_screen.py first to fetch them.")
         conn.close()
         return
         
@@ -403,7 +450,7 @@ def main():
     fetch_and_cache_historical_prices(tickers, conn, force_refresh=args.refresh_prices)
     
     # Run backtest
-    run_backtest(conn, holding_period_months=args.holding_months, start_year=args.start_year)
+    run_backtest(conn, tickers, index_name=index_name, holding_period_months=args.holding_months, start_year=args.start_year)
     
     conn.close()
     print("Backtesting completed successfully!")

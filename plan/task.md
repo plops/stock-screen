@@ -1,22 +1,30 @@
 # Tasks: S&P 500 Macro Alignment Screener & Backtester
 
-- `[/]` Setup & Database Architecture
-  - `[/]` Create database schema in SQLite (`stock_data.db`) for caching stock metadata, stock metrics, FRED macro series, and historical prices.
-- `[ ]` Macro Data Ingestion (FRED)
-  - `[ ]` Download `WALCL` (Fed Assets) and `FEDFUNDS` (Interest Rates) CSVs from FRED.
-  - `[ ]` Process and load macro data into SQLite.
-  - `[ ]` Implement trend analysis (QE vs. QT, High vs. Low interest rate).
-- `[ ]` Stock Data Ingestion & Screening (`stock_screen.py`)
-  - `[ ]` Fetch S&P 500 list from Wikipedia.
-  - `[ ]` Fetch current financials using `yfinance` with fallback calculations for Debt/EBITDA and PE.
-  - `[ ]` Implement relative median-based categorization for the 4 stock profiles (A, B, C, D).
-  - `[ ]` Implement daily rate-limited caching in SQLite.
-- `[ ]` Backtesting Engine (`backtest.py`)
-  - `[ ]` Download historical stock prices from Yahoo Finance.
-  - `[ ]` Construct historical regimes (Q1, Q2, Q3, Q4 macro environments) based on FRED history.
-  - `[ ]` Analyze returns of stock cohorts (Defensive, Speculative, Value, Moderate) in past regimes.
-  - `[ ]` Generate plots for regimes and cohort performance.
-- `[ ]` Report and Verification
-  - `[ ]` Create summary reports (`report.md`, `screener_results.csv`).
-  - `[ ]` Run validation runs (`--limit 20` and full run) to verify all files are correctly populated.
-  - `[ ]` Document usage in `README.md`.
+- `[x]` Setup & Database Architecture
+  - `[x]` Create database schema in SQLite (`stock_data.db`) for caching stock metadata, stock metrics, FRED macro series, and historical prices.
+- `[x]` Macro Data Ingestion (FRED)
+  - `[x]` Download `WALCL` (Fed Assets) and `FEDFUNDS` (Interest Rates) CSVs from FRED.
+  - `[x]` Process and load macro data into SQLite.
+  - `[x]` Implement trend analysis (QE vs. QT, High vs. Low interest rate).
+- `[x]` Stock Data Ingestion & Screening (`stock_screen.py`)
+  - `[x]` Fetch S&P 500 list from Wikipedia.
+  - `[x]` Fetch current financials using `yfinance` with fallback calculations for Debt/EBITDA and PE.
+  - `[x]` Implement relative median-based categorization for the 4 stock profiles (A, B, C, D).
+  - `[x]` Implement daily rate-limited caching in SQLite.
+- `[x]` Backtesting Engine (`backtest.py`)
+  - `[x]` Download historical stock prices from Yahoo Finance.
+  - `[x]` Construct historical regimes (Q1, Q2, Q3, Q4 macro environments) based on FRED history.
+  - `[x]` Analyze returns of stock cohorts (Defensive, Speculative, Value, Moderate) in past regimes.
+  - `[x]` Generate plots for regimes and cohort performance.
+- `[x]` Report and Verification
+  - `[x]` Create summary reports (`report.md`, `screener_results.csv`).
+  - `[x]` Run validation runs (`--limit 20` and full run) to verify all files are correctly populated.
+  - `[x]` Document usage in `README.md`.
+- `[x]` Multi-Index & International Support (SMI, Euro Stoxx 50, Nasdaq-100)
+  - `[x]` Update SQLite schema to support `market_index` in `stocks` table.
+  - `[x]` Implement Wikipedia scrapers for Nasdaq-100, SMI (Swiss), and Euro Stoxx 50.
+  - `[x]` Add `--index` and `--tickers` arguments to `stock_screen.py`.
+  - `[x]` Add `--index` and `--tickers` arguments to `backtest.py`.
+  - `[x]` Update report and chart names to include index suffix (e.g. `report_smi.md`, `backtest_performance_smi.png`).
+  - `[x]` Run validation runs for SMI and Euro Stoxx 50.
+  - `[x]` Update `README.md` and document new CLI options.
