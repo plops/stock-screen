@@ -1,0 +1,84 @@
+
+
+Stock Screening & Analysis Framework
+Project Overview
+Goal: Implement a macro-sensitive stock screening framework to classify equities based on Federal Reserve policy (interest rates & balance sheet/liquidity).
+Objective: Create a Python or Rust implementation for historical back-testing and real-time trade candidate selection.
+Source Material: Original Video Analysis.
+Consultation: AI Search Discussion.
+Macroeconomic Context
+Federal Reserve Interest Rates: The rate at which banks lend to each other overnight. Higher rates typically increase borrowing costs, slowing economic growth, while lower rates encourage borrowing and investment.
+Balance Sheet (Liquidity): The Fed’s total holdings.
+QE (Quantitative Easing): The Fed buys bonds to inject cash into the economy, increasing liquidity. This usually boosts asset prices.
+QT (Quantitative Tightening): The Fed allows bonds to mature or sells them to remove cash from the system, reducing liquidity. This usually constrains asset prices.
+The Framework: Market Quadrants
+Metrics: Revenue Growth, Earnings Growth, Forward P/E, Debt-to-EBITDA.
+Quadrant 1 (Low-Interest/QE): Aggressive. High-growth/speculative assets.
+Quadrant 2 (High-Interest/QE): Selective. Moderate growth/leverage.
+Quadrant 3 (Low-Interest/QT): Selective. High-growth/high-leverage.
+Quadrant 4 (High-Interest/QT): Defensive. Stable, low-debt, low-valuation.
+Platform Strategy
+Yahoo Finance is the recommended platform for free screening.
+Recommended: Yahoo Finance Stock Screener.
+Alternatives: TradingView (highly customizable), Macrotrends (free fundamental metrics).
+Implementation Options
+Python Approach
+This script provides a framework for pulling S&P 500 data and classifying stocks into the four market quadrants.
+Threshold Suggestions
+To make your screening robust, avoid hard-coding thresholds (like "P/E < 15"). Instead, use relative thresholds based on the current market's distribution. By calculating the median (df.median()) for P/E and Debt/EBITDA, you ensure your "high" or "low" classifications automatically adjust to the current macroeconomic environment.
+Implementation Code
+
+import pandas as pd
+import yfinance as yf
+import time
+
+def get_sp500_tickers():
+    # Fetch S&P 500 ticker list
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    table = pd.read_html(url)
+    return table[0]['Symbol'].str.replace('.', '-', regex=False).tolist()
+
+def screen_stock(ticker_symbol):
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        info = ticker.info
+        return {
+            'Ticker': ticker_symbol,
+            'Rev_Growth': info.get('revenueGrowth', 0),
+            'EPS_Growth': info.get('earningsGrowth', 0),
+            'Forward_PE': info.get('forwardPE', 15),
+            'Debt_EBITDA': info.get('debtToEbitda', 2.0)
+        }
+    except Exception: return None
+
+# Execution
+tickers = get_sp500_tickers()[:20]
+screened_data = [screen_stock(t) for t in tickers if screen_stock(t)]
+df = pd.DataFrame(screened_data).dropna()
+
+# Thresholds: Using median for relative classification
+med_pe = df['Forward_PE'].median()
+med_debt = df['Debt_EBITDA'].median()
+
+# Classification Logic
+def classify_quadrant(row):
+    high_pe = row['Forward_PE'] > med_pe
+    high_debt = row['Debt_EBITDA'] > med_debt
+    
+    if not high_pe and not high_debt: return 'Q4: Defensive'
+    if high_pe and not high_debt: return 'Q1: Aggressive'
+    if high_pe and high_debt: return 'Q2: Speculative'
+    return 'Q3: Value'
+
+df['Quadrant'] = df.apply(classify_quadrant, axis=1)
+print(df)
+Documentation
+DeepWiki yfinance docs
+Rust TUI Approach
+Stack: ratatui (UI), tokio (async), reqwest (API), yahoo_finance_api (wrapper).
+Logic: Async data fetching with state-managed TUI loop.
+Documentation: DeepWiki Rust Yahoo API.
+References
+Original Video Analysis.
+AI Search Discussion.
+

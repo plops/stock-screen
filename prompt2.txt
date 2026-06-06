@@ -1,0 +1,49 @@
+wo werden die informationen des FED publiziert (bilanz und QE oder QT, inteerst)
+Die offiziellen Informationen der US-Zentralbank (Federal Reserve) zu Zinsen, der Bilanzsumme sowie den Programmen zur quantitativen Lockerung (QE) oder Straffung (QT) werden direkt auf den Portalen des Federal Reserve Systems publiziert.
+Da die Daten auf verschiedene Berichte aufgeteilt sind, finden Sie hier die exakten Quellen und Veröffentlichungszyklen.
+1. Die Fed-Bilanz (QE / QT Daten)
+Die Entwicklung der Bilanzsumme zeigt direkt, ob sich die Fed im QE-Modus (Bilanz wächst) oder QT-Modus (Bilanz schrumpft) befindet.
+
+    Primärquelle: Der wöchentliche H.4.1 Statistical Release auf der offiziellen Website des Federal Reserve Boards.
+    Veröffentlichungszeit: Jeden Donnerstag um 16:30 Uhr Eastern Time (ET).
+    Beste visuelle Alternative: Die Datenbank FRED (Federal Reserve Economic Data) der Federal Reserve Bank of St. Louis. Suchen Sie dort nach dem Kürzel WALCL (Assets: Total Assets: Total Assets Less Eliminations from Consolidation). Dort sehen Sie die Bilanzentwicklung als sauberen, tagesaktuellen interaktiven Chart, den Sie auch per API in Python ansteuern können. 
+
+2. Leitzinsen (Interest Rates)
+Die Entscheidungen über den US-Leitzins (Federal Funds Rate) werden vom Offenmarktausschuss (FOMC) getroffen. 
+
+    Primärquelle: Die FOMC Meeting Calendars and Information.
+    Veröffentlichungszeit: Achtmal im Jahr nach den zweitägigen FOMC-Sitzungen (jeweils Mittwochs um 14:00 Uhr ET). 
+    Dokumente:
+        Das FOMC Statement (sofortige Pressemitteilung mit der Zinsentscheidung).
+        Das Summary of Economic Projections (SEP) inklusive des berühmten Dot Plots (erscheint nur viermal im Jahr und zeigt die Zinserwartungen der Fed-Mitglieder für die Zukunft).
+    FRED-Kürzel für Skripte: FEDFUNDS (gibt den effektiven Leitzinshistorien-Verlauf aus).
+
+3. API-Automatisierung für Ihre Python- oder Rust-Skripte
+Wenn Sie den in der vorherigen Nachricht besprochenen Screener bauen, müssen Sie diese Makro-Daten nicht manuell abtippen. Sie können sie kostenlos und automatisiert über die FRED API abfragen.
+Python-Beispiel mit pandas_datareader:
+python
+
+import pandas_datareader.data as web
+import datetime
+
+start = datetime.datetime(2025, 1, 1)
+end = datetime.datetime.now()
+
+# 1. Fed-Bilanz abrufen (Kürzel: WALCL)
+fed_balance_sheet = web.DataReader('WALCL', 'fred', start, end)
+
+# 2. Effektiven Leitzins abrufen (Kürzel: FEDFUNDS)
+fed_rates = web.DataReader('FEDFUNDS', 'fred', start, end)
+
+# Trend-Ermittlung für das Framework:
+current_balance = fed_balance_sheet['WALCL'].iloc[-1]
+prev_balance = fed_balance_sheet['WALCL'].iloc[-4] # Wert vor 4 Wochen
+
+if current_balance < prev_balance:
+    print("Regime: Quantitative Tightening (QT)")
+else:
+    print("Regime: Quantitative Easing (QE)")
+
+Use code with caution.
+Für Rust können Sie die HTTP-REST-Schnittstelle von FRED nutzen, indem Sie einen kostenlosen API-Schlüssel auf der FRED-Website beantragen und die Endpunkte über das reqwest-Crate abfragen.
+Möchten Sie Unterstützung dabei, wie Sie die Logik zur automatischen Erkennung des aktuellen Quadranten direkt in Ihr bestehendes Python- oder Rust-Skript einbinden können?
