@@ -1,0 +1,5 @@
+read prompt*.txt . Erzeuge ein Python Script. dies soll S&P500 stock ticker holen. Dann soll es die aktuellen Daten für die Ticker holen und die Firmen in die unterschiedlichen Quadranten einteilen. Das Skript soll auch die Informationen vom FED herunterladen. Script soll die Daten in einer Datei schreiben, zum Beispiel CSV oder SQLite so dass es nicht bei jedem aufruf neu laden muss. Wenn möglich, möchte ich auch die Möglichkeit haben, historische Daten herunterzuladen, um die im Video genannte Theorie zu überprüfen.
+
+nutze uv um python dependencies zu implementieren. speichere skript(e) in  ~/stage/stock-screen
+
+fuehre die skripte aus und speichere auch einen report in  ~/stage/stock-screen
