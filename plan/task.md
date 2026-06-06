@@ -1,0 +1,22 @@
+# Tasks: S&P 500 Macro Alignment Screener & Backtester
+
+- `[/]` Setup & Database Architecture
+  - `[/]` Create database schema in SQLite (`stock_data.db`) for caching stock metadata, stock metrics, FRED macro series, and historical prices.
+- `[ ]` Macro Data Ingestion (FRED)
+  - `[ ]` Download `WALCL` (Fed Assets) and `FEDFUNDS` (Interest Rates) CSVs from FRED.
+  - `[ ]` Process and load macro data into SQLite.
+  - `[ ]` Implement trend analysis (QE vs. QT, High vs. Low interest rate).
+- `[ ]` Stock Data Ingestion & Screening (`stock_screen.py`)
+  - `[ ]` Fetch S&P 500 list from Wikipedia.
+  - `[ ]` Fetch current financials using `yfinance` with fallback calculations for Debt/EBITDA and PE.
+  - `[ ]` Implement relative median-based categorization for the 4 stock profiles (A, B, C, D).
+  - `[ ]` Implement daily rate-limited caching in SQLite.
+- `[ ]` Backtesting Engine (`backtest.py`)
+  - `[ ]` Download historical stock prices from Yahoo Finance.
+  - `[ ]` Construct historical regimes (Q1, Q2, Q3, Q4 macro environments) based on FRED history.
+  - `[ ]` Analyze returns of stock cohorts (Defensive, Speculative, Value, Moderate) in past regimes.
+  - `[ ]` Generate plots for regimes and cohort performance.
+- `[ ]` Report and Verification
+  - `[ ]` Create summary reports (`report.md`, `screener_results.csv`).
+  - `[ ]` Run validation runs (`--limit 20` and full run) to verify all files are correctly populated.
+  - `[ ]` Document usage in `README.md`.

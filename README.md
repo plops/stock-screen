@@ -1,0 +1,67 @@
+# S&P 500 Stock Screening & Macro Alignment Tool
+
+This project provides a quantitative stock screening and backtesting pipeline that aligns equity investments with Federal Reserve monetary policy. The framework segments market conditions into four quadrants based on two core indicators: interest rates and central bank liquidity (balance sheet size). It then screens and categorizes S&P 500 companies into four matching risk/growth profiles.
+
+## Installation & Requirements
+
+We use `uv` for python dependency management. It automatically creates isolated environments and installs requirements (`pandas`, `yfinance`, `requests`, `matplotlib`, `tabulate`) using PEP 723 metadata.
+
+If you don't have `uv` installed, get it here: https://github.com/astral-sh/uv
+
+## How to Run
+
+### 1. Run the Stock Screener
+This script downloads Wikipedia S&P 500 data, downloads the Fed balance sheet (`WALCL`) and interest rates (`FEDFUNDS`) from FRED, and fetches yfinance fundamentals (Forward P/E, Debt-to-EBITDA, Revenue & EPS Growth) to classify the companies. All data is cached in a local SQLite database (`stock_data.db`) to avoid repeated API requests and rate limits.
+
+```bash
+# Run the screener (cached mode, polite rate-limiting, skips today's already fetched data)
+uv run stock_screen.py
+
+# Force refresh stock metrics from Yahoo Finance
+uv run stock_screen.py --refresh
+
+# Force refresh FED macroeconomic data from FRED
+uv run stock_screen.py --refresh-fed
+
+# Run a quick test on the first 20 tickers
+uv run stock_screen.py --limit 20
+```
+
+**Outputs:**
+- `stock_data.db` (SQLite Database cache)
+- `screener_results.csv` (CSV of current S&P 500 company classifications)
+- `report.md` (A beautiful Markdown report of the current regime, thresholds, and top candidates)
+
+---
+
+### 2. Run the Backtester
+This script runs historical backtests to verify the video's investment theory. It downloads weekly closing prices for S&P 500 stocks since 2015 (cached in SQLite), maps historical FRED regimes, calculates forward-holding returns for the four stock cohorts, and generates comparative metrics.
+
+```bash
+# Run backtest with default parameters (12-month holding period, since 2015)
+uv run backtest.py
+
+# Run backtest with a 24-month holding period since 2018
+uv run backtest.py --holding-months 24 --start-year 2018
+
+# Force refresh historical stock price downloads
+uv run backtest.py --refresh-prices
+```
+
+**Outputs:**
+- `backtest_report.md` (Detailed Markdown report of historical holding returns by regime)
+- `regimes_history.png` (Chart showing historical Fed Funds rate and balance sheet size, color-shaded by policy regime)
+- `backtest_performance.png` (Bar chart comparing stock cohort returns across different Fed regimes)
+
+---
+
+## The Macro Quadrant Framework
+
+We define the four regimes based on the Federal Funds Rate (Leitzins) and the 13-week change of Fed Assets (WALCL):
+
+| Quadrant | Interest Rate Level | Balance Sheet Trend | Policy Regime | Recommended Stock Cohort |
+| :--- | :--- | :--- | :--- | :--- |
+| **Q1** | **Low** (Below historical median) | **QE** (Expanding WALCL) | Aggressive | **Q1 Profile (Aggressive)**: High growth, low debt, high valuation |
+| **Q2** | **High** (Above historical median) | **QE** (Expanding WALCL) | Selective | **Q2 Profile (Moderate)**: Moderate growth, moderate debt |
+| **Q3** | **Low** (Below historical median) | **QT** (Contracting WALCL) | Selective | **Q3 Profile (Value)**: Low P/E, high debt (leveraged but cheap) |
+| **Q4** | **High** (Above historical median) | **QT** (Contracting WALCL) | Defensive | **Q4 Profile (Defensive)**: Stable, low debt, low valuation |

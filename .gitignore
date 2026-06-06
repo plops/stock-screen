@@ -1,0 +1,18 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# SQLite Database
+stock_data.db*
+
+# Generated screening and backtesting outputs
+screener_results.csv
+report.md
+backtest_report.md
+*.png
