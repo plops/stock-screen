@@ -76,3 +76,15 @@ We define the four regimes based on the Federal Funds Rate (Leitzins) and the 13
 | **Q2** | **High** (Above historical median) | **QE** (Expanding WALCL) | Selective | **Q2 Profile (Moderate)**: Moderate growth, moderate debt |
 | **Q3** | **Low** (Below historical median) | **QT** (Contracting WALCL) | Selective | **Q3 Profile (Value)**: Low P/E, high debt (leveraged but cheap) |
 | **Q4** | **High** (Above historical median) | **QT** (Contracting WALCL) | Defensive | **Q4 Profile (Defensive)**: Stable, low debt, low valuation |
+
+## Cohort Sorting and Candidate Selection
+
+To find the companies expected to perform best in the future, the candidates are ranked by the **optimal metric matching the macro thesis** of their specific quadrant:
+
+| Cohort | Target Macro Regime | Optimal Sorting Metric | Rationale & Selection Criteria |
+| :--- | :--- | :--- | :--- |
+| **Q1 (Aggressive)** | Low Interest / QE | **Revenue Growth** (descending) | In expansionary periods, the market rewards absolute market share expansion and top-line growth. |
+| **Q2 (Moderate)** | High Interest / QE | **Earnings Growth** (descending) | High interest rates compress overall multiples. We select companies showing strong bottom-line growth to prove their resilience to capital costs. |
+| **Q3 (Value)** | Low Interest / QT | **Revenue Growth** (descending) | Low rates aid leveraged companies. We prioritize those showing high top-line expansion capacity. |
+| **Q4 (Defensive)** | High Interest / QT | **Lowest Forward P/E** (ascending) | In contracting/high-rate environments, valuation safety is paramount. We filter out unprofitable companies (Forward P/E ≤ 0) and sort from the cheapest positive P/E. |
+
