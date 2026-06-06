@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/plops/stock-screen)
+
 # S&P 500 Stock Screening & Macro Alignment Tool
 
 This project provides a quantitative stock screening and backtesting pipeline that aligns equity investments with Federal Reserve monetary policy. The framework segments market conditions into four quadrants based on two core indicators: interest rates and central bank liquidity (balance sheet size). It then screens and categorizes S&P 500 companies into four matching risk/growth profiles.
