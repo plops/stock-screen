@@ -390,16 +390,30 @@ def generate_report(conn, df_stocks, output_report="report.md"):
     sector_quadrant = pd.crosstab(df_stocks["sector"], df_stocks["profile"])
     sector_table = sector_quadrant.to_markdown()
     
-    # Get top 5 stocks for each profile (sorted by market cap or revenue growth)
+    # Get top 5 stocks for each profile (sorted by optimal metric for the regime)
     profile_details = ""
     for p in ["Q1 Profile (Aggressive)", "Q2 Profile (Moderate)", "Q3 Profile (Value)", "Q4 Profile (Defensive)"]:
         sub_df = df_stocks[df_stocks["profile"] == p].copy()
-        # Sort by Market Cap descending
-        sub_df = sub_df.sort_values("market_cap", ascending=False)
+        
+        # Sort based on the optimal metric for the quadrant's theory
+        if p == "Q1 Profile (Aggressive)":
+            sub_df = sub_df.sort_values("revenue_growth", ascending=False)
+            sort_desc = "Top 5 companies ranked by **Revenue Growth** (prioritizing top-line expansion in a low-rate/QE environment):"
+        elif p == "Q2 Profile (Moderate)":
+            sub_df = sub_df.sort_values("earnings_growth", ascending=False)
+            sort_desc = "Top 5 companies ranked by **Earnings Growth** (prioritizing bottom-line resilience in a high-rate/QE environment):"
+        elif p == "Q3 Profile (Value)":
+            sub_df = sub_df.sort_values("revenue_growth", ascending=False)
+            sort_desc = "Top 5 companies ranked by **Revenue Growth** (prioritizing growth leveraging low rates in a low-rate/QT environment):"
+        else:  # Q4 Profile (Defensive)
+            # Filter for positive Forward P/E first, then sort ascending (cheapest valuation)
+            sub_df = sub_df[sub_df["forward_pe"] > 0].sort_values("forward_pe", ascending=True)
+            sort_desc = "Top 5 companies ranked by **lowest positive Forward P/E** (prioritizing value and margin of safety in a high-rate/QT environment):"
+            
         top_5 = sub_df.head(5)
         
         profile_details += f"### {p} Candidates\n"
-        profile_details += "Top 5 companies by Market Capitalization:\n\n"
+        profile_details += f"{sort_desc}\n\n"
         
         table_rows = []
         for _, row in top_5.iterrows():
