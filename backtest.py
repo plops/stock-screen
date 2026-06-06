@@ -237,15 +237,34 @@ This report evaluates the **Macro-Sensitive Stock Screening Framework** by analy
 
 * **Analysis Period:** {start_year} to present
 * **Holding Period:** {holding_period_months} Months
-* **Regime Definition:**
-  * **QE/QT:** Calculated based on the 13-week change of the Federal Reserve Balance Sheet (WALCL).
-  * **High/Low Rates:** Determined relative to the historical median Fed Funds rate (since 2000) of **{med_debt:.2f}%** (or calculated median).
+
+---
+
+## Core Concepts & Methodology
+
+### 1. What is a Cohort?
+A **cohort** is a group of companies that share similar financial characteristics. In this framework, the S&P 500 companies are classified into four distinct investment profiles (cohorts) based on their relative **Forward P/E (valuation)** and **Debt-to-EBITDA (leverage)**:
+- **Q1 Cohort (Aggressive):** High valuation (above market median), Low leverage (below market median).
+- **Q2 Cohort (Moderate):** High valuation, High leverage.
+- **Q3 Cohort (Value):** Low valuation, High leverage.
+- **Q4 Cohort (Defensive):** Low valuation, Low leverage.
+
+### 2. Backtest Execution: When are Stocks Bought and Sold?
+To verify the macro theory, the backtester simulates a **rolling entry and holding strategy**:
+- **Buying:** For **every week** in history since {start_year}, the backtester determines which Federal Reserve monetary policy regime was active on that week (based on interest rates and balance sheet trends). It simulates "buying" an equal-weighted basket of stocks in each cohort on that specific date.
+- **Holding:** The backtester holds the stocks for a fixed period of **{holding_period_months} months** (1 year by default).
+- **Selling:** The stocks are "sold" exactly at the end of the {holding_period_months}-month holding period.
+- **Aggregation:** Finally, the backtester groups all simulated trades by the Fed policy regime that was active at the *buy date* and calculates the average forward return for each cohort. This tells us: *"If I buy a specific stock cohort on a day when the Fed is in Regime X, what is my average expected return after holding for {holding_period_months} months?"*
+
+---
 
 ## Historical Holding Period Returns by Regime
 
 The table below shows the average **{holding_period_months}-month forward return** for each stock cohort, grouped by the Federal Reserve regime in place at the time of purchase.
 
 {df_summary.to_markdown(index=False)}
+
+---
 
 ## Key Findings & Theory Validation
 
