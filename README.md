@@ -17,7 +17,7 @@ This script downloads Wikipedia S&P 500 data, downloads the Fed balance sheet (`
 # Run the screener (cached mode, polite rate-limiting, skips today's already fetched data)
 uv run stock_screen.py
 
-# Force refresh stock metrics from Yahoo Finance
+# Force refresh stock metrics (overwrites cached data for all stocks)
 uv run stock_screen.py --refresh
 
 # Force refresh FED macroeconomic data from FRED
@@ -26,6 +26,15 @@ uv run stock_screen.py --refresh-fed
 # Run a quick test on the first 20 tickers
 uv run stock_screen.py --limit 20
 ```
+
+#### Resuming Failed Runs & Handling Rate Limits
+If a run fails or gets interrupted (for instance, Yahoo Finance rate limits your IP after several hundred requests, causing some stocks to fail), **simply run the script again without flags**:
+```bash
+uv run stock_screen.py
+```
+Because the SQLite database caches successful daily metrics, the script will automatically detect and skip all successfully downloaded stocks for today, and **only fetch the missing ones**. 
+
+*Tip: If you hit a rate limit block, wait 10–15 minutes for Yahoo's block to expire, then run the command to fill in the missing data. Repeat as necessary until all stocks are cached.*
 
 **Outputs:**
 - `stock_data.db` (SQLite Database cache)
